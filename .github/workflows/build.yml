@@ -67,7 +67,7 @@ jobs:
       - name: "⬇ Download Image via wget"
         if: ${{ !endsWith(matrix.img_download_url, '.torrent') }}
         working-directory: ./build
-        run: wget ${{ matrix.img_download_url }}
+        run: wget --trust-server-names ${{ matrix.img_download_url }}
 
       - name: "🔐 Verify image"
         working-directory: ./build
