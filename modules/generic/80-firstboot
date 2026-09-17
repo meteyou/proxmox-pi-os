@@ -1,0 +1,50 @@
+#!/bin/bash
+set -xe
+export LC_ALL=C
+
+########################################
+# Functions and Basic Configuration    #
+########################################
+
+# Load common functions and set up cleanup trap
+source /common.sh
+install_cleanup_trap
+
+# Load additional configuration
+source /files/00-config
+
+########################################
+# Install scripts & systemd units      #
+########################################
+
+# proxmox-os-hosts:     every boot, maps hostname -> bridge IP in /etc/hosts
+# proxmox-os-firstboot: once after cloud-init, PVE admin for Imager user,
+#                       disables cloud-init, removes itself
+install -d -m 0755 /usr/local/sbin /var/lib/proxmox-os
+
+install -m 0755 /files/firstboot/proxmox-os-hosts     /usr/local/sbin/proxmox-os-hosts
+install -m 0755 /files/firstboot/proxmox-os-firstboot /usr/local/sbin/proxmox-os-firstboot
+
+install -m 0644 /files/firstboot/proxmox-os-hosts.service \
+    /etc/systemd/system/proxmox-os-hosts.service
+install -m 0644 /files/firstboot/proxmox-os-firstboot.service \
+    /etc/systemd/system/proxmox-os-firstboot.service
+
+########################################
+# Substitute build-time placeholders   #
+########################################
+
+INSTALLED_FILES=(
+    /usr/local/sbin/proxmox-os-hosts
+    /etc/systemd/system/proxmox-os-hosts.service
+)
+for f in "${INSTALLED_FILES[@]}"; do
+    sed -i -e "s|@BRIDGE@|${PROXMOX_BRIDGE}|g" "${f}"
+done
+
+########################################
+# Enable services                      #
+########################################
+
+systemctl_if_exists enable proxmox-os-hosts.service
+systemctl_if_exists enable proxmox-os-firstboot.service

@@ -1,0 +1,19 @@
+[Unit]
+Description=Proxmox OS: map hostname to the IP of @BRIDGE@ in /etc/hosts
+Documentation=https://github.com/meteyou/proxmox-pi-os
+# cloud-init-local applies the hostname chosen in the Raspberry Pi Imager,
+# networking (ifupdown2) brings up the bridge and obtains the DHCP lease.
+After=cloud-init-local.service networking.service
+Wants=networking.service
+# pmxcfs refuses to start if the hostname resolves to a loopback address.
+Before=pve-cluster.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/proxmox-os-hosts
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

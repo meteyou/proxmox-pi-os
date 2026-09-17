@@ -1,0 +1,41 @@
+#!/bin/bash
+set -xe
+export LC_ALL=C
+
+########################################
+# Functions and Basic Configuration    #
+########################################
+
+# Load common functions and set up cleanup trap
+source /common.sh
+install_cleanup_trap
+
+# Load additional configuration
+source /files/00-config
+
+########################################
+# Set DEBIAN_FRONTEND to               #
+# noninteractive                       #
+########################################
+
+if [[ "${DEBIAN_FRONTEND}" != "noninteractive" ]]; then
+    export DEBIAN_FRONTEND=noninteractive
+fi
+
+########################################
+# Install Proxmox archive keyring      #
+########################################
+
+wget -q "${PROXMOX_KEYRING_URL}" -O "${PROXMOX_KEYRING_FILE}"
+echo "${PROXMOX_KEYRING_SHA256}  ${PROXMOX_KEYRING_FILE}" | sha256sum -c -
+chmod 0644 "${PROXMOX_KEYRING_FILE}"
+
+########################################
+# Add Proxmox no-subscription repo     #
+########################################
+
+install -m 0644 /files/proxmox/proxmox.sources /etc/apt/sources.list.d/proxmox.sources
+
+# NOTE: 'apt-get update' is deliberately NOT run here. The Proxmox kernel
+# has to be pinned first (see 51-proxmox-kernel-pin) before APT is allowed
+# to see the packages from this repository.

@@ -1,0 +1,36 @@
+#!/bin/bash
+set -xe
+export LC_ALL=C
+
+########################################
+# Functions and Basic Configuration    #
+########################################
+
+# Load common functions and set up cleanup trap
+source /common.sh
+install_cleanup_trap
+
+# Load additional configuration
+source /files/00-config
+
+########################################
+# Set DEBIAN_FRONTEND to               #
+# noninteractive                       #
+########################################
+
+if [[ "${DEBIAN_FRONTEND}" != "noninteractive" ]]; then
+    export DEBIAN_FRONTEND=noninteractive
+fi
+
+########################################
+# Execute upgrade                      #
+########################################
+
+apt-get -y -o Dpkg::Options::="--force-confnew" upgrade
+
+########################################
+# Cleanup                              #
+########################################
+
+apt-get -y autoremove
+apt-get clean

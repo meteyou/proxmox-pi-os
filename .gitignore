@@ -1,0 +1,19 @@
+# Ignore workspace
+src/workspace
+
+# Ignore src/image
+src/image/**
+
+# Ignore build.log
+src/build.log
+
+# Ignore vscode settings
+.vscode
+.vscode/**
+
+# Ignore JetBrains IDE settings
+.idea
+
+# Ignore Clankers
+.pi
+.claude

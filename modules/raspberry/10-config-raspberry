@@ -1,0 +1,54 @@
+#!/bin/bash
+set -xe
+export LC_ALL=C
+
+########################################
+# Functions and Basic Configuration    #
+########################################
+
+# Load common functions and set up cleanup trap
+source /common.sh
+install_cleanup_trap
+
+# Load additional configuration (e.g., BASE_USER)
+source /files/00-config
+
+########################################
+# Ensure 4K kernel is present          #
+########################################
+
+if [[ ! -f "$BOOT_PATH/kernel8.img" ]]; then
+    echo "kernel8.img not found, installing linux-image-rpi-v8"
+    apt-get install -y linux-image-rpi-v8
+fi
+
+[[ -f "$BOOT_PATH/kernel8.img" ]] || { echo "kernel8.img still missing, aborting build"; exit 1; }
+
+########################################
+# Add boot-config.txt to               #
+# /boot/config.txt                     #
+########################################
+
+cat /files/boot-config.txt >> "$BOOT_PATH"/config.txt
+
+########################################
+# add cmdline.txt settings             #
+########################################
+
+sed -i '1 s/$/ cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1 apparmor=1 security=apparmor psi=1/' "$BOOT_PATH"/cmdline.txt
+
+########################################
+# Enable getty                         #
+########################################
+
+systemctl_if_exists enable getty@tty1.service
+
+########################################
+# Enable sshd                          #
+########################################
+
+if [ -f /usr/lib/raspberrypi-sys-mods/imager_custom ]; then
+    /usr/lib/raspberrypi-sys-mods/imager_custom enable_ssh
+else
+    systemctl_if_exists enable ssh
+fi

@@ -1,0 +1,163 @@
+#!/bin/bash
+#### Proxmox OS - first boot setup
+####
+#### https://github.com/meteyou/proxmox-pi-os
+####
+#### Runs once, After=cloud-final.service. By then cloud-init has applied the
+#### Raspberry Pi Imager settings (hostname, user, password, SSH keys) and
+#### proxmox-os-hosts + pve-cluster are up. This script:
+####
+####   * gives the user created by the Imager (UID 1000) the Administrator
+####     role in Proxmox, so the web UI can be used without a root password
+####   * sets the postfix hostname to the real hostname
+####   * disables cloud-init for all further boots
+####   * removes itself
+####
+#### Design notes (borrowed from MainsailOS):
+####   * no `set -e` - every step is logged and the script continues on
+####     individual failures
+####   * STATE_FILE is only written when all steps succeeded. Otherwise the
+####     unit stays `failed` and the next boot retries.
+####   * cloud-init is only disabled as the very last step, after everything
+####     else succeeded. This unit is WantedBy=cloud-init.target, which the
+####     cloud-init generator no longer pulls in once
+####     /etc/cloud/cloud-init.disabled exists - disabling it earlier would
+####     make the retry on the next boot impossible.
+
+set -u
+export LC_ALL=C
+
+STATE_DIR="/var/lib/proxmox-os"
+STATE_FILE="${STATE_DIR}/firstboot.done"
+LOG_FILE="/var/log/proxmox-os-firstboot.log"
+SERVICE_NAME="proxmox-os-firstboot.service"
+SELF="/usr/local/sbin/proxmox-os-firstboot"
+PVE_WAIT_SECONDS=120
+
+mkdir -p "${STATE_DIR}" "$(dirname "${LOG_FILE}")"
+exec > >(stdbuf -oL tee -a "${LOG_FILE}") 2>&1
+
+failed=0
+
+log() { printf '[%s] %s\n' "$(date -Is)" "$*"; }
+
+run_step() {
+    local name="$1"; shift
+    log "--- step: ${name} ---"
+    if "$@"; then
+        log "    OK: ${name}"
+    else
+        log "    FAILED: ${name} (rc=$?) - continuing"
+        failed=1
+    fi
+}
+
+on_exit() {
+    local rc=$?
+    log "=== exit rc=${rc} ==="
+}
+trap on_exit EXIT
+
+########################################
+# Steps                                #
+########################################
+
+wait_for_pve() {
+    local i
+    for ((i = 0; i < PVE_WAIT_SECONDS; i++)); do
+        if mountpoint -q /etc/pve; then
+            return 0
+        fi
+        sleep 1
+    done
+    log "/etc/pve is not mounted after ${PVE_WAIT_SECONDS}s, is pve-cluster running?"
+    return 1
+}
+
+grant_admin_to_imager_user() {
+    local user
+    user="$(getent passwd 1000 | cut -d: -f1)"
+
+    if [[ -z "${user}" ]]; then
+        log "no user with UID 1000 found, skipping (log in as root@pam instead)"
+        return 0
+    fi
+
+    if ! pveum user list --output-format json | grep -q "\"${user}@pam\""; then
+        pveum user add "${user}@pam" --comment "Created by Raspberry Pi Imager" || return 1
+    fi
+
+    pveum acl modify / --users "${user}@pam" --roles Administrator || return 1
+    log "user ${user}@pam is now Administrator, log in with realm 'Linux PAM'"
+}
+
+fix_postfix_hostname() {
+    local fqdn
+    fqdn="$(hostname -f 2>/dev/null || hostname)"
+    [[ -n "${fqdn}" ]] || return 0
+
+    echo "${fqdn}" > /etc/mailname
+    if command -v postconf >/dev/null 2>&1; then
+        postconf -e "myhostname = ${fqdn}" || return 1
+        systemctl try-restart postfix.service >/dev/null 2>&1 || true
+    fi
+}
+
+disable_cloud_init() {
+    # cloud-init has done its job (Imager customisation). Disable it for all
+    # further boots, the official way. Remove this file to re-enable it.
+    touch /etc/cloud/cloud-init.disabled
+}
+
+cleanup() {
+    log "cleanup: removing ${SERVICE_NAME} and ${SELF}"
+    systemctl disable "${SERVICE_NAME}" >/dev/null 2>&1 || true
+    rm -f "/etc/systemd/system/${SERVICE_NAME}" \
+          "/etc/systemd/system/cloud-init.target.wants/${SERVICE_NAME}" \
+          "/etc/systemd/system/multi-user.target.wants/${SERVICE_NAME}"
+    rm -f "${SELF}"
+    systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
+########################################
+# Main                                 #
+########################################
+
+main() {
+    log "=== proxmox-os-firstboot starting ==="
+
+    if [[ -f "${STATE_FILE}" ]]; then
+        log "already completed on a previous boot - running cleanup"
+        cleanup
+        exit 0
+    fi
+
+    if ! wait_for_pve; then
+        log "Proxmox is not up, will retry on next boot"
+        exit 1
+    fi
+
+    run_step "grant_admin_to_imager_user" grant_admin_to_imager_user
+    run_step "fix_postfix_hostname"       fix_postfix_hostname
+
+    if [[ "${failed}" -ne 0 ]]; then
+        log "some steps failed, will retry on next boot"
+        exit 1
+    fi
+
+    # Must stay last: once cloud-init is disabled, cloud-init.target (and with
+    # it this unit) is never scheduled again, so there is no retry after this.
+    run_step "disable_cloud_init" disable_cloud_init
+
+    if [[ "${failed}" -ne 0 ]]; then
+        log "disabling cloud-init failed, will retry on next boot"
+        exit 1
+    fi
+
+    touch "${STATE_FILE}"
+    cleanup
+    log "=== proxmox-os-firstboot done ==="
+    exit 0
+}
+
+main

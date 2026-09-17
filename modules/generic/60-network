@@ -1,0 +1,74 @@
+#!/bin/bash
+set -xe
+export LC_ALL=C
+
+########################################
+# Functions and Basic Configuration    #
+########################################
+
+# Load common functions and set up cleanup trap
+source /common.sh
+install_cleanup_trap
+
+# Load additional configuration
+source /files/00-config
+
+########################################
+# Set DEBIAN_FRONTEND to               #
+# noninteractive                       #
+########################################
+
+if [[ "${DEBIAN_FRONTEND}" != "noninteractive" ]]; then
+    export DEBIAN_FRONTEND=noninteractive
+fi
+
+########################################
+# Install ifupdown2 + DHCP client      #
+########################################
+
+apt-get install -y ifupdown2 isc-dhcp-client
+
+########################################
+# Remove NetworkManager                #
+########################################
+
+apt-get purge -y network-manager network-manager-l10n
+apt-get -y autoremove
+
+########################################
+# /etc/resolv.conf                     #
+########################################
+
+if [[ -L /etc/resolv.conf ]]; then
+    rm -f /etc/resolv.conf
+    touch /etc/resolv.conf
+    chmod 0644 /etc/resolv.conf
+fi
+
+########################################
+# Install network configuration        #
+########################################
+
+install -m 0644 /files/network/interfaces /etc/network/interfaces
+sed -i \
+    -e "s|@BRIDGE_PORT@|${PROXMOX_BRIDGE_PORT}|g" \
+    -e "s|@BRIDGE@|${PROXMOX_BRIDGE}|g" \
+    /etc/network/interfaces
+
+install -d -m 0755 /etc/network/interfaces.d
+
+systemctl_if_exists enable networking.service
+
+########################################
+# Hand the hardware watchdog over to   #
+# Proxmox (watchdog-mux)               #
+########################################
+
+install -d -m 0755 /etc/systemd/system.conf.d
+install -m 0644 /files/network/99-no-watchdog.conf /etc/systemd/system.conf.d/99-no-watchdog.conf
+
+########################################
+# Cleanup                              #
+########################################
+
+apt-get clean

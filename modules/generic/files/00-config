@@ -1,0 +1,26 @@
+#!/bin/bash
+
+export DIST_NAME=ProxmoxPi-OS
+
+# Proxmox repository
+# Hash from https://pve.proxmox.com/wiki/Package_Repositories
+export PROXMOX_DEBIAN_CODENAME=trixie
+export PROXMOX_KEYRING_URL="https://enterprise.proxmox.com/debian/proxmox-archive-keyring-${PROXMOX_DEBIAN_CODENAME}.gpg"
+export PROXMOX_KEYRING_FILE=/usr/share/keyrings/proxmox-archive-keyring.gpg
+export PROXMOX_KEYRING_SHA256=136673be77aba35dcce385b28737689ad64fd785a797e57897589aed08db6e45
+
+# Proxmox packages to install (without the proxmox-ve meta package, which
+# would pull in the Proxmox kernel)
+export PROXMOX_PACKAGES="pve-manager qemu-server pve-qemu-kvm pve-container"
+
+# Network: physical port and the Proxmox bridge on top of it
+export PROXMOX_BRIDGE_PORT=eth0
+export PROXMOX_BRIDGE=vmbr0
+
+is_raspbian() {
+    if [[ -f $BOOT_PATH/config.txt && -f /etc/rpi-issue ]]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}

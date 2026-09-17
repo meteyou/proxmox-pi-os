@@ -1,0 +1,22 @@
+[Unit]
+Description=Proxmox OS first boot setup (after cloud-init)
+Documentation=https://github.com/meteyou/proxmox-pi-os
+# cloud-init.target is ordered After=multi-user.target and cloud-final.service
+# is WantedBy=cloud-init.target, so cloud-final runs after the rest of
+# multi-user.target is already up. Hook into the same target and explicitly
+# wait for cloud-final and the Proxmox cluster filesystem.
+After=cloud-final.service pve-cluster.service
+Wants=cloud-final.service
+ConditionPathExists=!/var/lib/proxmox-os/firstboot.done
+ConditionPathExists=/usr/local/sbin/proxmox-os-firstboot
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/proxmox-os-firstboot
+TimeoutStartSec=10min
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=cloud-init.target

@@ -1,0 +1,41 @@
+#!/bin/bash
+set -xe
+export LC_ALL=C
+
+########################################
+# Functions and Basic Configuration    #
+########################################
+
+# Load common functions and set up cleanup trap
+source /common.sh
+install_cleanup_trap
+
+# Load additional configuration
+source /files/00-config
+
+########################################
+# Set DEBIAN_FRONTEND to               #
+# noninteractive                       #
+########################################
+
+if [[ "${DEBIAN_FRONTEND}" != "noninteractive" ]]; then
+    export DEBIAN_FRONTEND=noninteractive
+fi
+
+########################################
+# Make sure cloud-init is installed    #
+########################################
+
+if [[ $(is_installed cloud-init) -eq 0 ]]; then
+    echo "cloud-init is not installed, installing it"
+    apt-get install -y cloud-init
+fi
+
+########################################
+# Install cloud-init overrides         #
+########################################
+
+# - manage_etc_hosts: false  -> /etc/hosts is handled by proxmox-os-hosts
+# - network.config: disabled -> network is a static ifupdown2 setup (vmbr0)
+install -d -m 0755 /etc/cloud/cloud.cfg.d
+install -m 0644 /files/cloud-init/99-proxmox-os.cfg /etc/cloud/cloud.cfg.d/99-proxmox-os.cfg

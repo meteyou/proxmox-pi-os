@@ -1,0 +1,33 @@
+# Proxmox OS network configuration (ifupdown2)
+#
+# The wired port @BRIDGE_PORT@ is enslaved to the Linux bridge @BRIDGE@. VMs and
+# containers attach to @BRIDGE@ (the default bridge in the Proxmox web UI).
+#
+# The bridge gets its address via DHCP. Proxmox needs a stable IP address for
+# the node, so please set a DHCP reservation for this host in your router.
+# proxmox-os-hosts.service keeps /etc/hosts in sync with the current IP.
+#
+# Alternatively, replace the dhcp stanza with a static configuration, e.g.:
+#
+#   auto @BRIDGE@
+#   iface @BRIDGE@ inet static
+#           address 192.168.178.50/24
+#           gateway 192.168.178.1
+#           bridge-ports @BRIDGE_PORT@
+#           bridge-stp off
+#           bridge-fd 0
+#
+# and put your DNS server into /etc/resolv.conf.
+
+auto lo
+iface lo inet loopback
+
+iface @BRIDGE_PORT@ inet manual
+
+auto @BRIDGE@
+iface @BRIDGE@ inet dhcp
+        bridge-ports @BRIDGE_PORT@
+        bridge-stp off
+        bridge-fd 0
+
+source /etc/network/interfaces.d/*

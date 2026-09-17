@@ -1,0 +1,44 @@
+#!/bin/bash
+set -xe
+export LC_ALL=C
+
+########################################
+# Functions and Basic Configuration    #
+########################################
+
+# Load common functions and set up cleanup trap
+source /common.sh
+install_cleanup_trap
+
+# Load additional configuration
+source /files/00-config
+
+########################################
+# Set DEBIAN_FRONTEND to               #
+# noninteractive                       #
+########################################
+
+if [[ "${DEBIAN_FRONTEND}" != "noninteractive" ]]; then
+    export DEBIAN_FRONTEND=noninteractive
+fi
+
+########################################
+# Pin Proxmox kernel packages          #
+########################################
+
+install -m 0644 /files/proxmox/no-proxmox-kernel.pref /etc/apt/preferences.d/no-proxmox-kernel.pref
+
+########################################
+# Refresh & Pull in Proxmox versions   #
+# of system packages (e.g. apparmor)   #
+########################################
+
+apt-get update
+apt-get -y -o Dpkg::Options::="--force-confnew" dist-upgrade
+
+########################################
+# Cleanup                              #
+########################################
+
+apt-get -y autoremove
+apt-get clean

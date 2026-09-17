@@ -1,0 +1,74 @@
+#!/bin/bash
+set -xe
+export LC_ALL=C
+
+########################################
+# Functions and Basic Configuration    #
+########################################
+
+# Load common functions and set up cleanup trap
+source /common.sh
+install_cleanup_trap
+
+# Load additional configuration
+source /files/00-config
+
+########################################
+# Set DEBIAN_FRONTEND to               #
+# noninteractive                       #
+########################################
+
+if [[ "${DEBIAN_FRONTEND}" != "noninteractive" ]]; then
+    export DEBIAN_FRONTEND=noninteractive
+fi
+
+########################################
+# Enter Proxmox install mode           #
+########################################
+
+# The Proxmox ISO installer uses this marker as well: package postinst
+# scripts skip service starts and certificate generation while it exists.
+# pmxcfs creates the cluster config with the real hostname on the first boot.
+touch /proxmox_install_mode
+
+########################################
+# Preseed postfix                      #
+########################################
+
+# "Local only" is enough for the Pi and avoids the interactive dialog.
+# The hostname is not known at build time, proxmox-os-firstboot fixes
+# /etc/mailname on the first boot.
+echo "postfix postfix/main_mailer_type select Local only" | debconf-set-selections
+echo "postfix postfix/mailname string localhost.localdomain" | debconf-set-selections
+
+########################################
+# Install Proxmox VE  #
+########################################
+
+# shellcheck disable=SC2086
+apt-get install -y --no-install-recommends ${PROXMOX_PACKAGES}
+
+########################################
+# Disable enterprise repositories      #
+########################################
+
+for f in /etc/apt/sources.list.d/pve-enterprise.sources /etc/apt/sources.list.d/ceph.sources; do
+    if [[ -f "${f}" ]] && ! grep -q "^Enabled: no" "${f}"; then
+        echo "Enabled: no" >> "${f}"
+    fi
+done
+
+apt-get update
+
+########################################
+# Leave Proxmox install mode           #
+########################################
+
+rm -f /proxmox_install_mode
+
+########################################
+# Cleanup                              #
+########################################
+
+apt-get -y autoremove
+apt-get clean

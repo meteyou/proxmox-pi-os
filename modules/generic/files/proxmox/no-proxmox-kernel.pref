@@ -1,0 +1,9 @@
+Explanation: The SBC kernel stays in place, never install the Proxmox meta packages
+Package: proxmox-ve proxmox-default-kernel
+Pin: release a=*
+Pin-Priority: -1
+
+Explanation: Never install any Proxmox kernel packages
+Package: /^proxmox-kernel-[0-9]/
+Pin: release a=*
+Pin-Priority: -1

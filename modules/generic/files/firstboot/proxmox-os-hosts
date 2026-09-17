@@ -1,0 +1,85 @@
+#!/bin/bash
+#### Proxmox OS - keep /etc/hosts in sync with the bridge IP
+####
+#### https://github.com/meteyou/proxmox-pi-os
+####
+#### Proxmox (pmxcfs) refuses to start when the hostname resolves to a
+#### loopback address (the 127.0.1.1 line Debian/cloud-init usually write).
+#### The IP of the bridge is assigned via DHCP and therefore not known at
+#### build time, so this script runs on every boot (before pve-cluster) and
+#### maps the hostname to the current IPv4 address of the bridge:
+####
+####   <ip>   <hostname>.local <hostname>   # managed by proxmox-os-hosts
+####
+#### Any existing 127.0.1.1 line and any other line containing the hostname
+#### are removed. If you switch to a static IP and want to manage /etc/hosts
+#### yourself, disable the service:
+####
+####   systemctl disable proxmox-os-hosts.service
+
+set -u
+export LC_ALL=C
+
+BRIDGE="@BRIDGE@"
+HOSTS_FILE="/etc/hosts"
+MARKER="# managed by proxmox-os-hosts"
+WAIT_SECONDS=60
+
+log() { printf 'proxmox-os-hosts: %s\n' "$*"; }
+
+get_ip() {
+    ip -4 -o addr show dev "${BRIDGE}" scope global 2>/dev/null \
+        | awk '{print $4}' | cut -d/ -f1 | head -n1
+}
+
+name="$(hostname)"
+if [[ -z "${name}" || "${name}" == "localhost" ]]; then
+    log "hostname is '${name:-unset}', nothing to do"
+    exit 0
+fi
+
+ip_addr=""
+for ((i = 0; i < WAIT_SECONDS; i++)); do
+    ip_addr="$(get_ip)"
+    [[ -n "${ip_addr}" ]] && break
+    sleep 1
+done
+
+if [[ -z "${ip_addr}" ]]; then
+    log "no IPv4 address on ${BRIDGE} after ${WAIT_SECONDS}s, leaving ${HOSTS_FILE} untouched"
+    exit 0
+fi
+
+new_line="${ip_addr}	${name}.local ${name}	${MARKER}"
+
+if grep -qxF "${new_line}" "${HOSTS_FILE}" && ! grep -qE '^127\.0\.1\.1[[:space:]]' "${HOSTS_FILE}"; then
+    log "${HOSTS_FILE} already maps ${name} to ${ip_addr}"
+    exit 0
+fi
+
+tmp="$(mktemp "${HOSTS_FILE}.XXXXXX")"
+awk -v name="${name}" -v marker="${MARKER}" -v line="${new_line}" '
+    # keep comment lines as they are
+    /^[[:space:]]*#/ { print; next }
+    # drop the loopback alias for the hostname
+    /^127\.0\.1\.1[[:space:]]/ { next }
+    # drop our previously managed line
+    index($0, marker) { next }
+    {
+        # drop any other line that maps this hostname
+        skip = 0
+        for (i = 2; i <= NF; i++) {
+            if ($i ~ /^#/) break
+            if ($i == name || $i == name ".local") skip = 1
+        }
+        if (skip) next
+        print
+        # place our line right after "127.0.0.1 localhost"
+        if (!done && $1 == "127.0.0.1") { print line; done = 1 }
+    }
+    END { if (!done) print line }
+' "${HOSTS_FILE}" > "${tmp}"
+
+chmod 0644 "${tmp}"
+mv -f "${tmp}" "${HOSTS_FILE}"
+log "mapped ${name} to ${ip_addr} in ${HOSTS_FILE}"

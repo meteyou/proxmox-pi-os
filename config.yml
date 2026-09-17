@@ -1,0 +1,18 @@
+- name: raspberry_pi-arm64-trixie
+  type: raspberry
+  img_download_url: "https://downloads.raspberrypi.org/raspios_lite_arm64_latest.torrent"
+  img_hash_url: "https://downloads.raspberrypi.org/raspios_lite_arm64_latest.sha256"
+  env:
+    ARCH: arm64
+    IMAGE_ENLARGEROOT: 6000
+    MOUNT_PROC: 1
+    MOUNT_SYS: 1
+    INIT_FORMAT: cloudinit-rpi
+  special_modules: []
+  rpi_json:
+    name: "Proxmox Pi OS $VERSION$ - (64-bit)"
+    description: "A port of Raspberry Pi OS lite with preinstalled Proxmox"
+    devices:
+      - "pi3-64bit"
+      - "pi4-64bit"
+      - "pi5-64bit"
