@@ -1,6 +1,6 @@
 - name: raspberry_pi-arm64-trixie
   type: raspberry
-  img_download_url: "https://downloads.raspberrypi.org/raspios_lite_arm64_latest.torrent"
+  img_download_url: "https://downloads.raspberrypi.org/raspios_lite_arm64_latest"
   img_hash_url: "https://downloads.raspberrypi.org/raspios_lite_arm64_latest.sha256"
   env:
     ARCH: arm64
