@@ -60,6 +60,15 @@ install -d -m 0755 /etc/network/interfaces.d
 systemctl_if_exists enable networking.service
 
 ########################################
+# Re-sync /etc/hosts on every DHCP     #
+# lease (cable plugged in after boot)  #
+########################################
+
+install -d -m 0755 /etc/dhcp/dhclient-exit-hooks.d
+install -m 0644 /files/network/dhclient-exit-hook /etc/dhcp/dhclient-exit-hooks.d/proxmox-os-hosts
+sed -i -e "s|@BRIDGE@|${PROXMOX_BRIDGE}|g" /etc/dhcp/dhclient-exit-hooks.d/proxmox-os-hosts
+
+########################################
 # Hand the hardware watchdog over to   #
 # Proxmox (watchdog-mux)               #
 ########################################

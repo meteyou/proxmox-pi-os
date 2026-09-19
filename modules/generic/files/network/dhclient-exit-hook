@@ -1,0 +1,26 @@
+# Proxmox OS - dhclient exit hook
+#
+# Sourced by /sbin/dhclient-script (sh, not bash) after every DHCP event.
+# proxmox-os-hosts.service only runs once at boot. If the Ethernet cable is
+# plugged in later (or the lease changes), /etc/hosts still maps the hostname
+# to 127.0.1.1 and pve-cluster refuses to start. Re-run the hosts script on
+# every new lease of the bridge and kick the Proxmox services that failed
+# while the IP was missing.
+
+case "${reason:-}" in
+    BOUND|RENEW|REBIND|REBOOT) ;;
+    *) return 0 2>/dev/null || exit 0 ;;
+esac
+
+[ "${interface:-}" = "@BRIDGE@" ] || { return 0 2>/dev/null || exit 0; }
+
+/usr/local/sbin/proxmox-os-hosts || true
+
+if ! systemctl is-active --quiet pve-cluster.service; then
+    systemctl start --no-block pve-cluster.service || true
+fi
+
+if systemctl is-failed --quiet proxmox-os-firstboot.service; then
+    systemctl reset-failed proxmox-os-firstboot.service || true
+    systemctl start --no-block proxmox-os-firstboot.service || true
+fi
