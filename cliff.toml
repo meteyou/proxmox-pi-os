@@ -1,0 +1,88 @@
+# configuration file for git-cliff (0.1.0)
+
+[changelog]
+# changelog header
+header = """
+<!-- THIS FILE IS UPDATED AUTOMATICALLY, ANY CHANGES WILL BE OVERRIDDEN -->
+# Changelog
+All notable changes to Proxmox Pi OS will be documented in this file.\n
+"""
+# template for the changelog body
+# https://tera.netlify.app/docs/#introduction
+body = """
+{% if version %}\
+    ## [{{ version | trim_start_matches(pat="v") }}](https://github.com/meteyou/proxmox-pi-os/releases/tag/{{version}}) - {{ timestamp | date(format="%Y-%m-%d") }}
+\
+{% else %}\
+    ## [unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}\
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits
+    | filter(attribute="scope")
+    | sort(attribute="scope") %}
+        - **{{commit.scope}}**: {{ commit.message | upper_first | trim }}\
+        {%- if commit.breaking %}
+        {% raw %}  {% endraw %}- **BREAKING**: {{commit.breaking_description}}
+        {%- endif -%}
+    {%- endfor -%}
+    {%- for commit in commits %}
+        {%- if commit.scope -%}
+        {% else -%}
+        {% raw %}\n{% endraw %}\
+        - {{ commit.message | upper_first | trim }}\
+        {%- if commit.breaking %}
+        {% raw %}  {% endraw %}- **BREAKING**: {{commit.breaking_description}}
+        {%- endif -%}
+        {% endif -%}
+    {% endfor -%}
+    {% raw %}\n{% endraw %}
+{% endfor %}\n\
+"""
+# remove the leading and trailing whitespaces from the template
+trim = true
+# changelog footer
+footer = """
+"""
+
+# postprocessors
+postprocessors = [
+    { pattern = '<REPO>', replace = "https://github.com/meteyou/proxmox-pi-os" }, # replace repository URL
+]
+
+[git]
+# allow only conventional commits
+# https://www.conventionalcommits.org
+conventional_commits = true
+filter_unconventional = false
+# regex for parsing and grouping commits
+commit_parsers = [
+
+    # Commits to skip
+    { message = "(?i)^chore: bump version to", skip = true},
+    { message = "^docs\\(changelog\\): update changelog", skip = true},
+
+    # Commits to parse
+    { message = "^feat(\\(.*\\))?:", group = "<!-- 1 -->Features"},
+    { message = "^feature(\\(.*\\))?:", group = "<!-- 1 -->Features"},
+    { message = "^fix(\\(.*\\))?:", group = "<!-- 2 -->Bug Fixes and Improvements"},
+    { message = "^perf(\\(.*\\))?:", group = "<!-- 3 -->Performance"},
+    { message = "^refactor(\\(.*\\))?:", group = "<!-- 4 -->Refactor"},
+    { message = "^style(\\(.*\\))?:", group = "<!-- 5 -->Styling"},
+    { message = "^locale(\\(.*\\))?:", group = "<!-- 6 -->Localization"},
+    { message = "^docs(\\(.*\\))?:", group = "<!-- 7 -->Documentation"},
+    { message = "^test(\\(.*\\))?:", group = "<!-- 8 -->Other"},
+    { message = "^ci(\\(.*\\))?:", group = "<!-- 8 -->Other"},
+    { message = "^chore(\\(.*\\))?:", group = "<!-- 8 -->Other"},
+
+    { body = ".*security", group = "Security"},
+]
+commit_preprocessors = [
+    { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](<REPO>/pull/${2}))" },
+]
+
+# filter out the commits that are not matched by commit parsers
+filter_commits = true
+ignore_tags="v*-(beta|rc)*"
+# glob pattern for matching git tags
+tag_pattern = "[0-9]*"
