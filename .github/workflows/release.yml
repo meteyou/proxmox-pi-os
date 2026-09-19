@@ -1,0 +1,187 @@
+name: "Release"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (format: X.Y.Z or X.Y.Z-alpha.N)"
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: "📥 Checkout"
+        uses: actions/checkout@v6
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: "🔎 Check that develop can be fast-forwarded to main"
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo "::error::main is not an ancestor of develop, fast-forward merge is not possible. Merge main into develop first."
+            exit 1
+          fi
+
+      - name: "🔎 Check release version"
+        id: version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if ! [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "::error::Version '$VERSION' is not SemVer compliant. Required format: X.Y.Z or X.Y.Z-alpha.N"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+            echo "::error::Tag '${VERSION}' already exists"
+            exit 1
+          fi
+
+          PRERELEASE=false
+          [[ $VERSION == *-* ]] && PRERELEASE=true
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "prerelease=${PRERELEASE}" >> $GITHUB_OUTPUT
+          echo "Version '${VERSION}' is SemVer compliant (prerelease=${PRERELEASE})."
+
+      - name: "🏷 Get latest tag"
+        id: latest_tag
+        run: |
+          # empty on the very first release -> changelog covers the whole history
+          LATEST="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          echo "tag=${LATEST}" >> $GITHUB_OUTPUT
+          echo "Latest tag: '${LATEST}'"
+
+      - name: "🔧 Setup git config"
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: "#️⃣ Update VERSION file and push tag"
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "${VERSION}" > VERSION
+          git add VERSION
+          git commit -m "chore: bump version to v${VERSION}"
+          git tag -a "${VERSION}" -m "${VERSION}"
+          git push origin develop
+          git push origin "${VERSION}"
+
+      - name: "📝 Generate release notes"
+        uses: orhun/git-cliff-action@v4
+        id: changelog
+        with:
+          config: cliff-release.toml
+          args: ${{ steps.latest_tag.outputs.tag != '' && format('{0}..HEAD', steps.latest_tag.outputs.tag) || '' }}
+
+      - name: "📝 Create draft release"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ steps.changelog.outputs.content }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARGS=(--draft --notes-file - --title "Proxmox Pi OS ${VERSION}")
+          [[ "${{ steps.version.outputs.prerelease }}" == "true" ]] && ARGS+=(--prerelease)
+          printf '%s\n' "${NOTES}" | gh release create "${VERSION}" "${ARGS[@]}"
+
+  build:
+    needs: prepare-release
+    uses: ./.github/workflows/build-image.yml
+    with:
+      ref: ${{ needs.prepare-release.outputs.version }}
+      upload_to_release: true
+
+  publish-release:
+    needs: [prepare-release, build]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.prepare-release.outputs.version }}
+    steps:
+      - name: "📥 Download per-image manifests"
+        run: gh release download "${VERSION}" --repo "${{ github.repository }}" --pattern '*.rpi-imager.json' --dir downloads
+
+      - name: "🔧 Combine into rpi-imager.json"
+        shell: python
+        run: |
+          import glob, json
+
+          os_list = []
+          for path in sorted(glob.glob("downloads/*.rpi-imager.json")):
+              with open(path) as f:
+                  os_list.extend(json.load(f)["os_list"])
+              print(f"added {path}")
+
+          if not os_list:
+              raise SystemExit("no manifests found")
+
+          with open("rpi-imager.json", "w") as f:
+              json.dump({"os_list": os_list}, f, indent=2)
+              f.write("\n")
+
+          print(json.dumps({"os_list": os_list}, indent=2))
+
+      - name: "🚀 Upload rpi-imager.json and publish release"
+        run: |
+          gh release upload "${VERSION}" --repo "${{ github.repository }}" --clobber rpi-imager.json
+          gh release edit "${VERSION}" --repo "${{ github.repository }}" --draft=false
+
+  update-changelog:
+    needs: [publish-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: "📥 Checkout"
+        uses: actions/checkout@v6
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: "📝 Generate CHANGELOG.md"
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: "🔧 Setup git config"
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: "📤 Commit updated changelog"
+        run: |
+          git add CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "CHANGELOG.md unchanged"
+            exit 0
+          fi
+          git commit -m "docs(changelog): update changelog"
+          git push origin develop
+
+  merge-develop-to-main:
+    needs: [update-changelog]
+    runs-on: ubuntu-latest
+    steps:
+      - name: "📥 Checkout"
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: "⏩ Fast-forward main to develop"
+        run: |
+          git fetch origin develop
+          git merge --ff-only origin/develop
+          git push origin main
