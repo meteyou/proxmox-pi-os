@@ -2,6 +2,24 @@
 # Changelog
 All notable changes to Proxmox Pi OS will be documented in this file.
 
+## [unreleased]
+### Documentation
+
+- Add credits section to README.md with references to CustoPiZer and installation guide
+
+## [0.0.3](https://github.com/meteyou/proxmox-pi-os/releases/tag/0.0.3) - 2026-09-19
+### Features
+
+- **rpi-imager**: Add icon for the Imager OS list
+
+### Bug Fixes and Improvements
+
+- **ci**: Grant contents write permission to reusable build workflow
+
+### Documentation
+
+- Add README.md with rpi imager guide
+
 ## [0.0.2](https://github.com/meteyou/proxmox-pi-os/releases/tag/0.0.2) - 2026-09-19
 ### Features
 
