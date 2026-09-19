@@ -40,3 +40,11 @@ Proxmox refuses to start when the hostname resolves to `127.0.1.1`, therefore
 `/etc/hosts` is kept in sync with the bridge IP (at boot and on every DHCP
 lease). If the cable is plugged in after boot, the Proxmox services are started
 automatically once the lease arrives.
+
+## Credits
+
+- Images are built with [CustoPiZer](https://github.com/OctoPrint/CustoPiZer)
+  by OctoPrint.
+- The build workflow follows the guide
+  [Proxmox VE auf dem Raspberry Pi 5 installieren](https://schroederdennis.de/raspberry-pi/proxmox-ve-raspberry-pi-5-arm64-anleitung-installieren-tutorial/)
+  by Dennis Schröder.
