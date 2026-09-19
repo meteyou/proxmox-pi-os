@@ -166,6 +166,51 @@ jobs:
           sha256sum ${{ env.IMAGE }} > ${{ env.IMAGE }}.sha256
           sha256sum ${{ env.IMAGE }}.xz > ${{ env.IMAGE }}.xz.sha256
 
+      - name: "📝 Generate Raspberry Pi Imager manifest"
+        working-directory: ./build
+        shell: python
+        run: |
+          import os, json, datetime
+
+          image = os.environ["IMAGE"]
+          rpi_json = json.loads(os.environ.get("RPI_JSON") or "{}")
+          env_vars = json.loads(os.environ.get("MATRIX_ENV") or "{}")
+          release_tag = os.environ["RELEASE_TAG"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+
+          def sha256_from(path):
+              with open(path) as f:
+                  return f.read().split()[0]
+
+          entry = {
+              "name": rpi_json.get("name", image).replace("$VERSION$", release_tag),
+              "description": rpi_json.get("description", ""),
+              "icon": rpi_json.get("icon", "https://downloads.raspberrypi.com/imager/images/raspberrypi.png"),
+              # Replace with file:///path/to/<image>.xz to use a locally downloaded copy
+              "url": f"https://github.com/{repo}/releases/download/{release_tag}/{image}.xz",
+              "extract_size": os.path.getsize(image),
+              "extract_sha256": sha256_from(f"{image}.sha256"),
+              "image_download_size": os.path.getsize(f"{image}.xz"),
+              "image_download_sha256": sha256_from(f"{image}.xz.sha256"),
+              "release_date": datetime.date.today().isoformat(),
+              "init_format": env_vars.get("INIT_FORMAT", "none"),
+              "devices": rpi_json.get("devices", []),
+          }
+
+          manifest = {"os_list": [entry]}
+          with open(f"{image}.rpi-imager.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+              f.write("\n")
+
+          print(json.dumps(manifest, indent=2))
+
+          # helper to rewrite the url to a local file:// path after download
+          import shutil
+          shutil.copy(os.path.join(os.environ["GITHUB_WORKSPACE"], "tools", "create-local-manifest.py"), "create-local-manifest.py")
+        env:
+          RPI_JSON: ${{ toJson(matrix.rpi_json) }}
+          MATRIX_ENV: ${{ toJson(matrix.env) }}
+
       - name: "📋 Upload Artifacts"
         uses: actions/upload-artifact@v7
         with:
@@ -174,4 +219,6 @@ jobs:
             build/${{ env.IMAGE }}.xz
             build/${{ env.IMAGE }}.xz.sha256
             build/${{ env.IMAGE }}.sha256
+            build/${{ env.IMAGE }}.rpi-imager.json
+            build/create-local-manifest.py
           if-no-files-found: ignore
