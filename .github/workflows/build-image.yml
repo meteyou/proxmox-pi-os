@@ -188,7 +188,8 @@ jobs:
           entry = {
               "name": rpi_json.get("name", image).replace("$VERSION$", release_tag),
               "description": rpi_json.get("description", ""),
-              "icon": rpi_json.get("icon", "https://downloads.raspberrypi.com/imager/images/raspberrypi.png"),
+              # 40x40 px PNG, referenced from the main branch so the URL is independent of releases
+              "icon": rpi_json.get("icon", f"https://raw.githubusercontent.com/{repo}/main/assets/rpi-imager.png"),
               # Replace with file:///path/to/<image>.xz to use a locally downloaded copy
               "url": f"https://github.com/{repo}/releases/download/{release_tag}/{image}.xz",
               "extract_size": os.path.getsize(image),

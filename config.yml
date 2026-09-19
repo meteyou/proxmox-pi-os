@@ -12,6 +12,7 @@
   rpi_json:
     name: "Proxmox Pi OS $VERSION$ - (64-bit)"
     description: "A port of Raspberry Pi OS lite with preinstalled Proxmox"
+    icon: "https://raw.githubusercontent.com/meteyou/proxmox-pi-os/main/assets/rpi-imager.png"
     devices:
       - "pi3-64bit"
       - "pi4-64bit"
